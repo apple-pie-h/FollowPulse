@@ -6,8 +6,8 @@ import StatCard from "./components/StatCard";
 
 const APP_NAME = "FollowPulse";
 const APP_TAGLINE = "See who doesn’t follow you back on Instagram.";
-const YOUTUBE_EMBED_URL = "https://www.youtube.com/embed/your-video-id";
-const YOUTUBE_WATCH_URL = "https://www.youtube.com/watch?v=your-video-id";
+const YOUTUBE_EMBED_URL = "https://youtu.be/g_AnDngzKso?si=V1WnbJjPvRrs62zw";
+const YOUTUBE_WATCH_URL = "https://youtu.be/g_AnDngzKso?si=V1WnbJjPvRrs62zw";
 
 const NAV_TABS = ["Upload", "Results", "Help"];
 
