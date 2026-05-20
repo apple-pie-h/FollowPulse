@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -23,12 +24,13 @@ from backend.services.instagram_parser import (
 )
 from backend.storage.store import EXPORTS_DIR, UPLOADS_DIR, create_session, get_session
 
-
 app = Flask(__name__)
 CORS(app)
 
 
-def _serialize_session(session_id: str, results: dict[str, list[str]]) -> dict[str, object]:
+def _serialize_session(
+    session_id: str, results: dict[str, list[str]]
+) -> dict[str, object]:
     return {
         "session_id": session_id,
         "counts": {key: len(value) for key, value in results.items()},
@@ -215,4 +217,5 @@ def health_check():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(debug=True, host="0.0.0.0", port=port)
