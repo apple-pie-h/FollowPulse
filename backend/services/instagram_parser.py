@@ -25,11 +25,73 @@ def _read_json(file_storage: FileStorage) -> object:
     file_storage.stream.seek(0)
 
     try:
-        return json.loads(raw.decode("utf-8"))
+        # Instagram exports can include a UTF-8 BOM; utf-8-sig handles both BOM and non-BOM files.
+        return json.loads(raw.decode("utf-8-sig"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise InstagramExportError(
             f"{file_storage.filename} is not valid UTF-8 JSON."
         ) from exc
+
+
+def _extract_username_from_string_list_data(value: object) -> str | None:
+    if not isinstance(value, list):
+        return None
+
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        candidate = item.get("value")
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()
+    return None
+
+
+def _extract_username_from_entry(entry: object) -> str | None:
+    if not isinstance(entry, dict):
+        return None
+
+    for key in ("title", "username", "value"):
+        candidate = entry.get(key)
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()
+
+    return _extract_username_from_string_list_data(entry.get("string_list_data"))
+
+
+def _extract_following_username_from_entry(entry: object) -> str | None:
+    if not isinstance(entry, dict):
+        return None
+
+    for key in ("title", "username", "value"):
+        candidate = entry.get(key)
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()
+
+    return None
+
+
+def _extract_usernames_from_list(entries: object) -> list[str]:
+    if not isinstance(entries, list):
+        return []
+
+    usernames = {
+        username
+        for username in (_extract_username_from_entry(entry) for entry in entries)
+        if username
+    }
+    return sorted(usernames)
+
+
+def _extract_following_usernames_from_list(entries: object) -> list[str]:
+    if not isinstance(entries, list):
+        return []
+
+    usernames = {
+        username
+        for username in (_extract_following_username_from_entry(entry) for entry in entries)
+        if username
+    }
+    return sorted(usernames)
 
 
 def extract_followers(file_storage: FileStorage) -> list[str]:
@@ -40,24 +102,7 @@ def extract_followers(file_storage: FileStorage) -> list[str]:
             f"{file_storage.filename or 'This file'} has an unexpected structure. Expected follower data."
         )
 
-    frame = pd.DataFrame(data)
-    if "string_list_data" not in frame.columns:
-        raise InstagramExportError(
-            f"{file_storage.filename or 'This file'} is missing the string_list_data field."
-        )
-
-    followers = (
-        frame["string_list_data"]
-        .apply(
-            lambda entries: entries[0].get("value")
-            if isinstance(entries, list) and entries
-            else None
-        )
-        .dropna()
-        .astype(str)
-        .str.strip()
-    )
-    cleaned = sorted({username for username in followers if username})
+    cleaned = _extract_usernames_from_list(data)
 
     if not cleaned:
         raise InstagramExportError(
@@ -70,25 +115,18 @@ def extract_followers(file_storage: FileStorage) -> list[str]:
 def extract_following(file_storage: FileStorage) -> list[str]:
     validate_json_extension(file_storage)
     data = _read_json(file_storage)
-    if not isinstance(data, dict):
+
+    relationships: object
+    if isinstance(data, dict):
+        relationships = data.get("relationships_following")
+    elif isinstance(data, list):
+        relationships = data
+    else:
         raise InstagramExportError(
             f"{file_storage.filename or 'This file'} has an unexpected structure. Expected following data."
         )
 
-    relationships = data.get("relationships_following")
-    if not isinstance(relationships, list):
-        raise InstagramExportError(
-            f"{file_storage.filename or 'This file'} is missing the relationships_following list."
-        )
-
-    frame = pd.DataFrame(relationships)
-    if "title" not in frame.columns:
-        raise InstagramExportError(
-            f"{file_storage.filename or 'This file'} is missing the title field."
-        )
-
-    following = frame["title"].dropna().astype(str).str.strip()
-    cleaned = sorted({username for username in following if username})
+    cleaned = _extract_following_usernames_from_list(relationships)
 
     if not cleaned:
         raise InstagramExportError(
@@ -102,15 +140,25 @@ def detect_export_type(file_storage: FileStorage) -> str:
     validate_json_extension(file_storage)
     data = _read_json(file_storage)
 
-    if isinstance(data, list):
-        if all(
-            isinstance(item, dict) and "string_list_data" in item
-            for item in data[:3]
-        ):
-            return "followers"
+    if isinstance(data, dict):
+        if isinstance(data.get("relationships_following"), list):
+            return "following"
 
-    if isinstance(data, dict) and isinstance(data.get("relationships_following"), list):
-        return "following"
+    if isinstance(data, list):
+        sample = [item for item in data[:10] if isinstance(item, dict)]
+        if sample:
+            has_non_empty_title = any(
+                isinstance(item.get("title"), str) and item.get("title").strip()
+                for item in sample
+            )
+            has_string_list_value = any(
+                _extract_username_from_string_list_data(item.get("string_list_data"))
+                for item in sample
+            )
+            if has_non_empty_title and not has_string_list_value:
+                return "following"
+            if has_string_list_value:
+                return "followers"
 
     raise InstagramExportError(
         f"{file_storage.filename or 'This file'} is not a supported Instagram followers/following export."
