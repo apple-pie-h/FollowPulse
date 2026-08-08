@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Analytics } from "@vercel/analytics/react";
 import api from "./lib/api";
 import FileDropZone from "./components/FileDropZone";
 import ResultsTable from "./components/ResultsTable";
@@ -710,6 +711,7 @@ export default function App() {
           </div>
         </footer>
       </div>
+      <Analytics />
     </div>
   );
 }
